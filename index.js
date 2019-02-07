@@ -12,23 +12,28 @@ const app = express();
 
 // db
 mongoose.Promise = global.Promise;
-mongoose.connect(config.MONGO_URI);
+mongoose.connect(config.MONGO_URI, { useNewUrlParser: true,  useFindAndModify: false});
 
 // middlewares
 app.use(express.json());
 app.use(express.urlencoded({extended:true}));
 app.use(cookieParser());
 
-app.use(cors({
-    origin: config.CORS_ORIGIN,
-    credentials: true
+// cors
+app.use(cors((req, callback) => {
+    callback(null, {
+        origin: req.get('origin') == config.CORS_ORIGIN ? config.CORS_ORIGIN : '*',
+        credentials: req.get('origin') == config.CORS_ORIGIN ? true : false,
+        allowedHeaders: ['Content-Type', 'Access-Token', 'Expiry'],
+        exposedHeaders: ['Access-Token', 'Expiry'] 
+    });
 }));
 
 app.use(session({
     secret: config.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: config.COOKIE_SECURE, maxAge: null},
+    cookie: { secure: config.COOKIE_SECURE, maxAge: 24 * 60 * 60 * 1000},
     store: new MongoStore({ mongooseConnection: mongoose.connection})
 }));
 

@@ -19,10 +19,6 @@ const tokenSchema = new Schema({
         type: ObjectId,
         ref: 'Shop'
     },
-    token: {
-        type: String,
-        required: true
-    },
     created: {
         type: Date,
         default: Date.now,

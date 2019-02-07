@@ -3,25 +3,29 @@ const router = express.Router();
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
+const config = require('../config');
+const auth = require('../middlewares/Auth');
+
 const { User } = require('../models/User');
 const { Salon } = require('../models/Salon');
 const { Shop } = require('../models/Shop');
 const { Employee } = require('../models/Employee');
 const { Token } = require('../models/Token');
 
-const auth = require('../middlewares/Auth');
 
 // POST
 router.post('/signup', async (req, res) => {
     try {
         const { email, password, role } = req.body;
+        const token = req.get('Access-Token').split(' ')[1];
+        console.log(token);
 
         // find user
         let user = await User.findOne({ email });
 
         // exist user
         if(user) {
-            return res.status(409).json({message: 'User already exist'});
+            return res.status(409).json({success: false, errors: ['User already exist']});
         }
 
         // new user
@@ -42,7 +46,7 @@ router.post('/signup', async (req, res) => {
 
                 await token.save();
                 
-                res.json({token: token._id});
+                res.json({success: true, message: 'success'});
             }
         });
 
@@ -51,11 +55,12 @@ router.post('/signup', async (req, res) => {
     }
 });
 
-router.post('/verify/:id', async (req, res) => {
+router.get('/verification', async (req, res) => {
     try {
+        
         // TODO: validation salon register
-
-        const id = /^[a-fA-F0-9]{24}$/.test(req.params.id) ? req.params.id : '000000000000000000000000';
+        const id = req.query['token'];   
+        console.log(id);
         
         const token = await Token.findById(id);
 
@@ -66,13 +71,13 @@ router.post('/verify/:id', async (req, res) => {
                     let salon = await Salon.findOne({ owner: user._id });
                     let shop = new Shop();
                     let employee = new Employee();
-                    /*
+        
                     if(!salon) {
-                        salon = new Salon(req.body);
+                        salon = new Salon({"name":"Your Business Name"});
                         salon.owner = user;
                         salon.shops.push(shop);
 
-                        shop.name = salon.name;
+                        shop.name = "Your Shop Name";
                         shop.salon = salon;
                         shop.employees.push(employee);
 
@@ -83,27 +88,21 @@ router.post('/verify/:id', async (req, res) => {
                         await shop.save();
                         await employee.save();
                     }
-                    */
+                    
                     await user.updateOne(
                         {$set: { active: true, salon }}
                     );
                     
-                    // set cookie session
-                    req.session.user = {
-                        id: user._id,
-                        role: user.role
-                    };
-                    
-                    res.setHeader('Set-Cookie', 'loggedIn=true');
-                    //res.redirect('/');
-                    return res.json({message: 'authenticate'});
+                    return res.json({success: true, messages: ['success']});
                 }
-                return res.json({message: 'verified'});
+                return res.json({success: true, messages: ['verified']});
             }
-            return res.json({message: 'user not found'});
+            return res.json({success: false, errors: ['user not found']});
         } 
-        return res.json({message: 'token not found'});
+
+        return res.json({success: false, errors: ['token not found']});
     } catch(err) {
+        return res.json({success: false, errors: ['token not found']});
         console.log(err);
     }
 });
@@ -142,11 +141,11 @@ router.post('/register', async (req, res) => {
     }
 });
 
-router.post('/confirm/:id', async (req, res) => {
+router.get('/confirmation', async (req, res) => {
     try {
         // TODO: validation register
         
-        const id = /^[a-fA-F0-9]{24}$/.test(req.params.id) ? req.params.id : '';
+        const id = /^[a-fA-F0-9]{24}$/.test(req.query['access-token']) ? req.query['access-token'] : '000000000000000000000000';   
         const token = await Token.findById(id);
 
         if(token) {
@@ -188,11 +187,56 @@ router.post('/confirm/:id', async (req, res) => {
 
 router.post('/login', async (req, res) => {
 
+    const { email, password } = req.body;
+
+    // find user
+    let user = await User.findOne({ email });
+
+    // exist user
+    if(user) {
+        
+        if(user.comparePassword(password)) {
+            // set cookie
+            req.session.user = {
+                id: user._id,
+                email: user.email,
+                role: user.role
+            };
+            // set token
+            res.set({
+                'Access-Token': "Bearer " + jwt.sign({ ...req.session.user }, config.JWT_SECRET, { expiresIn: req.session.cookie.maxAge }),
+                'Expiry': req.session.cookie.expires
+            });
+            //
+            return res.json({
+                success: true,
+                data: req.session.user
+            });
+        }
+        return res.status(400).json({success: false, errors: ['Password Error']});
+    }
+    return res.status(400).json({success: false, errors: ['User not found']});
 });
 
-router.post('/logout', (req, res) => {
-    req.session.destroy();
-    res.status(200).json({success: true});
+router.get('/validation', auth, (req, res) => {
+    console.log('validation');
+    console.log(req.session.user);
+
+    res.set({
+        'Access-Token': req.get('Access-Token'),
+        'Access-Token': req.get('Expiry'),
+    });
+    
+    return res.json({
+        success: true,
+        data: req.session.user
+    });  
+});
+
+router.delete('/logout', (req, res) => {
+    console.log('logout');
+    req.session.destroy(error => console.log(error));
+    return res.json({success: true}); 
 });
 
 router.post('/forgot', async (req, res) => {
